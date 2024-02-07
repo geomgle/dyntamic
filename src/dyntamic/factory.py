@@ -1,15 +1,11 @@
 import json
-from typing import Annotated, Union
+from typing import Annotated, Union, TypeVar, get_args
+from pydantic import BaseModel, create_model, Field
 
-import typing
-from pydantic import create_model
-from pydantic.fields import Field
-
-Model = typing.TypeVar("Model", bound="BaseModel")
+ModelType = TypeVar("ModelType", bound=BaseModel)
 
 
 class DyntamicFactory:
-
     TYPES = {
         "string": str,
         "array": list,
@@ -22,85 +18,92 @@ class DyntamicFactory:
     def __init__(
         self,
         json_schema: dict,
-        base_model: type[Model] | tuple[type[Model], ...] | None = None,
+        base_model: type[ModelType] | tuple[type[ModelType], ...] | None = None,
         ref_template: str = "#/$defs/",
     ) -> None:
-        """
-        Creates a dynamic pydantic model from a JSONSchema, dumped from and existing Pydantic model elsewhere.
-            JSONSchema dump must be called with ref_template='{model}' like:
-
-            SomeSampleModel.model_json_schema(ref_template='{model}')
-            Use:
-            >> _factory = DyntamicFactory(schema)
-            >> _factory.make()
-            >> _model = create_model(_factory.class_name, **_factory.model_fields)
-            >> _instance = dynamic_model.model_validate(json_with_data)
-            >> validated_data = model_instance.model_dump()
-        """
-        self.class_name = json_schema.get("title")
-        self.class_type = json_schema.get("type")
-        self.required = json_schema.get("required", False)
-        self.raw_fields = json_schema.get("properties")
-        self.ref_template = ref_template
-        self.definitions = json_schema.get(ref_template)
+        self.class_name = json_schema.get("title", "DynamicModel")
+        self.class_type = json_schema.get("type", "object")
+        self.required = json_schema.get("required", [])
+        self.raw_fields = json_schema.get("properties", {})
+        self.ref_template = ref_template.strip("/")
+        self.definitions = json_schema.get("definitions") or json_schema.get(
+            "$defs", {}
+        )
         self.fields = {}
         self.model_fields = {}
         self._base_model = base_model
 
-    def make(self) -> Model:
-        """Factory method, dynamically creates a pydantic model from JSON Schema"""
-        for field in self.raw_fields:
-            if "$ref" in self.raw_fields[field]:
-                model_name = self.raw_fields[field].get("$ref")
-                self._make_nested(model_name, field)
+    def make(self) -> ModelType:
+        for field_name, field_info in self.raw_fields.items():
+            if "$ref" in field_info:
+                model_name = field_info["$ref"].split("/")[-1]
+                self._make_nested(model_name, field_name)
             else:
-                factory = self.TYPES.get(self.raw_fields[field].get("type"))
-                if factory == list:
-                    items = self.raw_fields[field].get("items")
-                    if self.ref_template in items:
-                        self._make_nested(items.get(self.ref_template), field)
-                self._make_field(factory, field, self.raw_fields.get("title"))
+                field_type = self.TYPES.get(field_info.get("type"))
+                if field_type == list:
+                    items = field_info.get("items", {})
+                    if "$ref" in items:
+                        model_name = items["$ref"].split("/")[-1]
+                        self._make_nested(model_name, field_name, is_array=True)
+                    else:
+                        self._make_field(list, field_name)
+                else:
+                    self._make_field(field_type, field_name)
         return create_model(
             self.class_name, __base__=self._base_model, **self.model_fields
         )
 
-    def _make_nested(self, model_name: str, field) -> None:
-        """Create a nested model"""
-        level = DyntamicFactory(
-            {self.ref_template: self.definitions} | self.definitions.get(model_name),
-            ref_template=self.ref_template,
+    def _make_nested(
+        self, model_name: str, field_name: str, is_array: bool = False
+    ) -> None:
+        nested_schema = self.definitions[model_name]
+        nested_factory = DyntamicFactory(
+            {**nested_schema, "title": model_name}, ref_template=self.ref_template
         )
-        level.make()
-        model = create_model(model_name, **level.model_fields)
-        self._make_field(model, field, field)
+        nested_model = nested_factory.make()
+        self._make_field([nested_model] if is_array else nested_model, field_name)
 
-    def _make_field(self, factory, field, alias) -> None:
-        """Create an annotated field"""
-        if field not in self.required:
-            factory_annotation = Annotated[Union[factory | None], factory]
+    def _make_field(self, field_type, field_name) -> None:
+        is_required = field_name in self.required
+        default = (
+            ... if is_required else None
+        )  # Use ellipsis for required fields, None for optional
+        field_alias = field_name  # Alias can be customized as needed
+
+        # Determine the correct annotation based on whether the field is required
+        if is_required:
+            annotation = field_type  # Direct type if required
         else:
-            factory_annotation = factory
-        self.model_fields[field] = (
-            Annotated[factory_annotation, Field(default_factory=factory, alias=alias)],
-            ...,
+            annotation = Union[field_type, None]  # Allow None if not required
+
+        # Update field definition with correct structure (type, default value)
+        self.model_fields[field_name] = (
+            annotation,
+            Field(default=default, alias=field_alias),
         )
 
 
-def json_to_model(raw_json: str, title: str = "Model", type: str = "object"):
-    dict = json.loads(raw_json)
-
-    req = []
-    sub_schema = {}
-    for k, v in dict.items():
-        req.append(k)
-        sub_schema[k] = {"title": k, "type": v}
-
+def json_to_model(raw_json: str, title: str = "DynamicModel", type: str = "object"):
+    data = json.loads(raw_json)
     schema = {
-        "properties": sub_schema,
-        "required": req,
+        "properties": {
+            key: {"type": "string"} for key in data.keys()
+        },  # Simplification, adjust types as needed
+        "required": list(data.keys()),
         "title": title,
         "type": type,
     }
+    return DyntamicFactory(schema).make()
 
-    model = DyntamicFactory(schema).make()
-    return model
+
+if __name__ == "__main__":
+    raw_json = """
+    {
+        "first_name": "string",
+        "last_name": "string",
+        "year_of_birth": "integer",
+        "num_seasons_in_nba": "integer"
+    }
+    """
+    model = json_to_model(raw_json).schema()
+    print(model)
