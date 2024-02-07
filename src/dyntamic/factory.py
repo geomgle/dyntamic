@@ -86,7 +86,7 @@ class DyntamicFactory:
         )
 
 
-def json_to_model(raw_json: str, title: str, type="object"):
+def json_to_model(raw_json: str, title: str = "Model", type: str = "object"):
     dict = json.loads(raw_json)
 
     req = []
