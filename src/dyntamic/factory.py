@@ -141,13 +141,18 @@ def create_json_schema_from_raw_json(raw_json, title="DynamicModel"):
     raw_data = json.loads(raw_json)
     properties, required, defs = process_dict(raw_data)
 
-    schema = {
-        "$defs": defs,
-        "properties": properties,
-        "required": required,
-        "title": title,
-        "type": "object",
-    }
+    schema = {}
+    if defs:
+        schema["$defs"] = defs
+
+    schema.update(
+        {
+            "properties": properties,
+            "required": required,
+            "title": title,
+            "type": "object",
+        }
+    )
 
     return schema
 
@@ -168,9 +173,7 @@ async def test():
         {
             "first_name": "string",
             "last_name": "string",
-            "year_of_birth": { 
-                "hello": "integer",
-                "world": "string" },
+            "year_of_birth": "integer",
             "num_seasons_in_nba": "integer"
         }
         """
@@ -183,11 +186,12 @@ async def test():
         class AnswerFormat(BaseModel):
             first_name: str
             last_name: str
-            year_of_birth: Year_of_birth
+            year_of_birth: int
             num_seasons_in_nba: int
 
         dyn_schema = DyntamicFactory(schema)
         model = dyn_schema.make()
+        print(schema)
         assert model.schema() == AnswerFormat.schema()
 
     except Exception as e:
