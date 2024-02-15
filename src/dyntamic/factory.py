@@ -85,19 +85,6 @@ class DyntamicFactory:
         self.model_fields[field_name] = field_definition
 
 
-def json_to_model(raw_json: str, title: str = "DynamicModel", type: str = "object"):
-    data = json.loads(raw_json)
-    schema = {
-        "properties": {
-            key: {"type": "string"} for key in data.keys()
-        },  # Simplification, adjust types as needed
-        "required": list(data.keys()),
-        "title": title,
-        "type": type,
-    }
-    return DyntamicFactory(schema).make()
-
-
 def process_value(key, value):
     """Process individual value to determine its type and potentially nested structure."""
     if isinstance(value, dict):
@@ -163,6 +150,12 @@ def create_json_schema_from_raw_json(raw_json, title="DynamicModel"):
     }
 
     return schema
+
+
+def json_to_model(raw_json: str, title: str = "DynamicModel"):
+    create_json_schema_from_raw_json(raw_json, title)
+
+    return DyntamicFactory(schema).make()
 
 
 async def test():
