@@ -173,7 +173,10 @@ async def test():
         {
             "first_name": "string",
             "last_name": "string",
-            "year_of_birth": "integer",
+            "year_of_birth": {
+                "hello": "integer",
+                "world": "string"
+            },
             "num_seasons_in_nba": "integer"
         }
         """
@@ -186,12 +189,11 @@ async def test():
         class AnswerFormat(BaseModel):
             first_name: str
             last_name: str
-            year_of_birth: int
+            year_of_birth: Year_of_birth
             num_seasons_in_nba: int
 
         dyn_schema = DyntamicFactory(schema)
         model = dyn_schema.make()
-        print(schema)
         assert model.schema() == AnswerFormat.schema()
 
     except Exception as e:
