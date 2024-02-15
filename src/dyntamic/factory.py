@@ -153,7 +153,7 @@ def create_json_schema_from_raw_json(raw_json, title="DynamicModel"):
 
 
 def json_to_model(raw_json: str, title: str = "DynamicModel"):
-    create_json_schema_from_raw_json(raw_json, title)
+    schema = create_json_schema_from_raw_json(raw_json, title)
 
     return DyntamicFactory(schema).make()
 
@@ -189,6 +189,7 @@ async def test():
         dyn_schema = DyntamicFactory(schema)
         model = dyn_schema.make()
         assert model.schema() == AnswerFormat.schema()
+
     except Exception as e:
         fr = traceback.extract_tb(sys.exc_info()[2])[-1]
         print(
