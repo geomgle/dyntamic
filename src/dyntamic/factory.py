@@ -137,7 +137,7 @@ def process_dict(data):
     )  # Ensure this matches with the expected number of values
 
 
-def create_json_schema_from_raw_json(raw_json, title="DynamicModel"):
+def create_json_schema_from_raw_json(raw_json, title="DynamicModel", return_json=False):
     raw_data = json.loads(raw_json)
     properties, required, defs = process_dict(raw_data)
 
@@ -153,6 +153,9 @@ def create_json_schema_from_raw_json(raw_json, title="DynamicModel"):
             "type": "object",
         }
     )
+
+    if return_json:
+        return json.dumps(schema)
 
     return schema
 
